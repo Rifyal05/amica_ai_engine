@@ -45,7 +45,7 @@ llm = Llama(
     n_threads=2,
     n_batch=1024,
     use_mmap=True,
-    verbose=False
+    verbose=True
 )
 
 embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={'device': 'cpu'})
