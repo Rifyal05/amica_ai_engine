@@ -27,7 +27,7 @@ def upload_to_dataset():
         return
     
     local_file = dist_files[0]
-    cloud_name = "llama_cpp_python-0.3.16-cp312-zen4-avx512.whl"
+    cloud_name = "llama_cpp_python-0.3.16-cp312-cp312-manylinux_2_39_x86_64.whl"
 
     print(f"🚀 Mengirim 'Mesin Turbo' Zen 4 ke Dataset: {cloud_name}...")
     

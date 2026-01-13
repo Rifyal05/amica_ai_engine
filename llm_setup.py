@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-WHL_REPO = "cloverxion/llama_cpp_python-0.3.16-cp312-zen4-avx512_cpu"
-WHL_FILE = "llama_cpp_python-0.3.16-cp312-zen4-avx512.whl"
+WHL_REPO = "cloverxion/llama_cpp_python-0.3.16-cp312-cp312-manylinux_2_39_x86_64"
+WHL_FILE = "llama_cpp_python-0.3.16-cp312-cp312-manylinux_2_39_x86_64.whl"
 MODEL_REPO = "cloverxion/gemma-3-1b-it-q4_km.gguf"
 MODEL_FILE = "gemma-3-1b-it-q4_km.gguf"
 
