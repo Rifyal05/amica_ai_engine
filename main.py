@@ -93,6 +93,21 @@ async def ingest_data(request: Request, x_amica_key: str = Header(None, alias="X
         return {"status": "success", "count": len(docs)}
     return {"status": "error"}
 
+@app.post("/v1/search")
+async def search_only(request: Request, x_amica_key: str = Header(None, alias="X-Amica-Key")):
+    if SECRET_KEY and x_amica_key != SECRET_KEY: raise HTTPException(status_code=401)
+    data = await request.json()
+    query = data.get("query", "")
+    docs = vector_db.similarity_search_with_score(query, k=5)
+    results = []
+    for doc, score in docs:
+        results.append({
+            "article_id": doc.metadata.get("id"),
+            "title": doc.metadata.get("title"),
+            "score": score
+        })
+    return {"results": results}
+
 @app.post("/v1/chat/stream")
 async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X-Amica-Key")):
     if SECRET_KEY and x_amica_key != SECRET_KEY: raise HTTPException(status_code=401)
@@ -116,7 +131,6 @@ async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X
                     if url and url not in seen_urls:
                         source_links.append(f"[{title}]({url})")
                         seen_urls.add(url)
-
 
         sys_p = f"""<start_of_turn>system
 Kamu Amica, asisten parenting profesional. ingat untuk memanggil user, gunakan Ayah/Bunda. 
