@@ -18,10 +18,9 @@ app = FastAPI(title="Amica AI Engine")
 SECRET_KEY = os.getenv("AMICA_API_KEY")
 GROQ_KEYS = [k.strip() for k in os.getenv("GROQ_API_KEYS", "").split(",") if k.strip()]
 
-RELEVANCE_THRESHOLD = 0.8 
+RELEVANCE_THRESHOLD = 0.8
 MAX_CTX = 8192
 MAX_GEN = 1024
-SAFE_LIMIT = MAX_CTX - MAX_GEN
 
 def log_debug(tag, message):
     now = datetime.datetime.now().strftime("%H:%M:%S")
@@ -50,24 +49,6 @@ llm = Llama(
 
 embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2", model_kwargs={'device': 'cpu'})
 vector_db = Chroma(persist_directory="./chroma_db", embedding_function=embed_model)
-
-def manage_context(system_p, history_p, user_p):
-    turns = history_p.split("<start_of_turn>")
-    turns = [f"<start_of_turn>{t}" for t in turns if t.strip()]
-    while True:
-        current_history = "".join(turns)
-        full_prompt = f"{system_p}\n{current_history}\n{user_p}"
-        tokens = llm.tokenize(full_prompt.encode('utf-8'))
-        if len(tokens) <= SAFE_LIMIT or not turns:
-            return full_prompt
-        turns.pop(0)
-
-def make_standalone(message, history):
-    if not history: return message
-    hist_short = "".join(history.split("<start_of_turn>")[-3:])
-    prompt = f"<start_of_turn>user\nBerdasarkan history, buat 1 pertanyaan pencarian singkat: {message}\nMandiri:<end_of_turn>\n<start_of_turn>model\n"
-    res = llm(prompt, max_tokens=64, stop=["<end_of_turn>"])
-    return res["choices"][0]["text"].strip() # type: ignore
 
 @app.post("/v1/ingest")
 async def ingest_data(request: Request, x_amica_key: str = Header(None, alias="X-Amica-Key")):
@@ -112,7 +93,7 @@ async def search_only(request: Request, x_amica_key: str = Header(None, alias="X
 async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X-Amica-Key")):
     if SECRET_KEY and x_amica_key != SECRET_KEY: raise HTTPException(status_code=401)
     data = await request.json()
-    message, history = data.get("message", ""), data.get("history", "")
+    message = data.get("message", "")
     
     async def event_generator():
         greetings = ["hai", "halo", "hi", "pagi", "siang", "sore", "malam", "amica"]
@@ -120,8 +101,8 @@ async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X
         rag_content, source_links = "", []
         
         if not is_greeting:
-            q = make_standalone(message, history)
-            scored_docs = vector_db.similarity_search_with_score(q, k=3)
+            log_debug("RAG", f"Searching directly: {message}")
+            scored_docs = vector_db.similarity_search_with_score(message, k=3)
             seen_urls = set()
             for doc, score in scored_docs:
                 if score < RELEVANCE_THRESHOLD:
@@ -133,27 +114,22 @@ async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X
                         seen_urls.add(url)
 
         sys_p = f"""<start_of_turn>system
-Kamu Amica, asisten parenting profesional. ingat untuk memanggil user, gunakan Ayah/Bunda. 
+Kamu Amica, asisten parenting profesional. Selalu panggil user dengan Ayah/Bunda. 
 ATURAN KETAT:
-1. Usahakan untuk menjawab dengan singkat, padat, dan langsung ke inti.
-2. JANGAN berikan link, URL, atau 'Sumber Daya Tambahan' apa pun dari imajinasimu. [URL ARE FORBIDDEN]
-3. Hanya gunakan link yang ada di bagian REFERENSI di bawah.
-4. Jika REFERENSI kosong atau tidak relevan dengan pertanyaan, abaikan saja dan jawab berdasarkan pengetahuanmu secara umum tanpa menyebutkan sumber.
-5. DILARANG MENAMBAHKAN URL KE DALAM JAWABANMU contoh = Sumber Daya Tambahan: • https://www.bullying.org/ • https://www.childhelp.org/ (jangan tambahkan link seperti ini)
-6. prioritaskan jawaban dengan teks yang ada di data referensi.
-7. If it can be answered in a paragraph, answer in a paragraph.
-8. jika itu salam atau tanya tentang dirimu, tambahkan konteks bahwa kamu adalah Amica asisten AI anti bullying
-9. selalu tambahkan disclaimer disetiap akhir respon atau jawabanmu
-10. tidak perlu memberikan url ke respon atau jawabanmu. url udah di handle sama metadata. jadi, kamu gak perlu kasih url di dalam respon jawabanmu
-"""
+1. Jawab singkat, padat, langsung ke inti.
+2. JANGAN berikan link/URL buatan sendiri.
+3. Gunakan REFERENSI di bawah jika relevan. Jika tidak, jawab pakai pengetahuan umum tanpa menyebut sumber.
+4. DILARANG KERAS mencantumkan URL di dalam teks jawabanmu. URL akan diproses sistem secara terpisah.
+5. Prioritaskan isi dari data referensi.
+6. Selalu tambahkan disclaimer singkat di akhir."""
 
         if rag_content:
             sys_p += f"\n\nREFERENSI:\n{rag_content}"
         
         sys_p += "<end_of_turn>"
-        user_p = f"<start_of_turn>user\n{message}<end_of_turn>\n<start_of_turn>model\n"
         
-        final_prompt = manage_context(sys_p, history, user_p)
+        final_prompt = f"{sys_p}\n<start_of_turn>user\n{message}<end_of_turn>\n<start_of_turn>model\n"
+        
         stream = llm(final_prompt, max_tokens=MAX_GEN, stream=True, stop=["<end_of_turn>"], temperature=0.3)
         
         for chunk in stream:
