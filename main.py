@@ -92,16 +92,24 @@ async def search_only(request: Request, x_amica_key: str = Header(None, alias="X
 @app.post("/v1/chat/stream")
 async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X-Amica-Key")):
     if SECRET_KEY and x_amica_key != SECRET_KEY: raise HTTPException(status_code=401)
-    data = await request.json()
+    
+    try:
+        data = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+        
     message = data.get("message", "")
     
     async def event_generator():
+        if await request.is_disconnected():
+            return
+
         greetings = ["hai", "halo", "hi", "pagi", "siang", "sore", "malam", "amica"]
         is_greeting = any(k in message.lower() for k in greetings) and len(message.split()) < 2
         rag_content, source_links = "", []
         
         if not is_greeting:
-            log_debug("RAG", f"Searching directly: {message}")
+            log_debug("RAG", f"Searching: {message}")
             scored_docs = vector_db.similarity_search_with_score(message, k=3)
             seen_urls = set()
             for doc, score in scored_docs:
@@ -114,35 +122,38 @@ async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X
                         seen_urls.add(url)
 
         sys_p = f"""<start_of_turn>system
-Kamu Amica, asisten parenting profesional. ingat untuk memanggil user, gunakan Ayah/Bunda. 
-ATURAN KETAT:
-1. Usahakan untuk menjawab dengan singkat, padat, dan langsung ke inti.
-2. JANGAN berikan link, URL, atau 'Sumber Daya Tambahan' apa pun dari imajinasimu. [URL ARE FORBIDDEN]
-3. Hanya gunakan link yang ada di bagian REFERENSI di bawah.
-4. Jika REFERENSI kosong atau tidak relevan dengan pertanyaan, abaikan saja dan jawab berdasarkan pengetahuanmu secara umum tanpa menyebutkan sumber.
-5. DILARANG MENAMBAHKAN URL KE DALAM JAWABANMU contoh = Sumber Daya Tambahan: • https://www.bullying.org/ • https://www.childhelp.org/ (jangan tambahkan link seperti ini)
-6. prioritaskan jawaban dengan teks yang ada di data referensi.
-7. If it can be answered in a paragraph, answer in a paragraph.
-8. jika itu salam atau tanya tentang dirimu, tambahkan konteks bahwa kamu adalah Amica asisten AI anti bullying
-9. selalu tambahkan disclaimer disetiap akhir respon atau jawabanmu
-10. tidak perlu memberikan url ke respon atau jawabanmu. url udah di handle sama metadata. jadi, kamu gak perlu kasih url di dalam respon jawabanmu
+Kamu adalah Amica, Asisten Edukasi Anti-Bullying.
+Tugasmu adalah memberikan dukungan dan informasi kepada orang tua (Ayah/Bunda) tentang bullying.
+
+INSTRUKSI KHUSUS (WAJIB PATUH):
+1. JAWAB DENGAN SINGKAT.
+2. DILARANG MENULIS LINK/URL DALAM TEKS JAWABAN. Hapus semua https:// atau www.
+3. Gunakan Bahasa Indonesia yang hangat.
+4. Jika ada REFERENSI di bawah, gunakan faktanya. Jika tidak, gunakan pengetahuan umum tentang anti-bullying.
+6. Akhiri dengan disclaimer bahwa anda adalah AI dan bukan pengganti professional."
+
+CONTOH JAWABAN YANG BENAR:
+"Halo Bunda, tanda bullying bisa berupa perubahan sikap mendadak atau enggan ke sekolah. Coba ajak bicara pelan-pelan saat santai. Tetap dampingi buah hati ya, Ayah/Bunda."
 """
 
         if rag_content:
-            sys_p += f"\n\nREFERENSI:\n{rag_content}"
+            sys_p += f"\n\nDATA REFERENSI:\n{rag_content}"
         
         sys_p += "<end_of_turn>"
-        
         final_prompt = f"{sys_p}\n<start_of_turn>user\n{message}<end_of_turn>\n<start_of_turn>model\n"
         
-        stream = llm(final_prompt, max_tokens=MAX_GEN, stream=True, stop=["<end_of_turn>"], temperature=0.3)
+        stream = llm(final_prompt, max_tokens=MAX_GEN, stream=True, stop=["<end_of_turn>"], temperature=0.2)
         
         for chunk in stream:
+            if await request.is_disconnected():
+                break 
+                
             token = chunk["choices"][0]["text"] # type: ignore
             yield token
-            await asyncio.sleep(0)
             
-        if source_links:
+            await asyncio.sleep(0.01)
+            
+        if source_links and not await request.is_disconnected():
             yield "\n\n📚 **Bacaan terkait:** " + ", ".join(source_links)
             
     return StreamingResponse(event_generator(), media_type="text/plain")
@@ -162,4 +173,4 @@ async def audit_grade(request: Request, x_amica_key: str = Header(None, alias="X
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=7860)
+    uvicorn.run(app, host="127.0.0.1", port=7860, log_level="info")
