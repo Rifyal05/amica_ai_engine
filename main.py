@@ -122,12 +122,12 @@ async def chat_stream(request: Request, x_amica_key: str = Header(None, alias="X
                         seen_urls.add(url)
 
         sys_p = f"""<start_of_turn>system
-Kamu adalah Amica, Asisten Edukasi Anti-Bullying.
+Kamu adalah Amica, Asisten Edukasi Anti-Bullying. Saat ditanya siapa dirimu, jawab bahwa kamu adalah Amica asisten edukasi anti bullying bertujuan untuk memberikan edukasi anti bullying kepada Ayah/Bunda.
 Tugasmu adalah memberikan dukungan dan informasi kepada orang tua (Ayah/Bunda) tentang bullying.
 
 INSTRUKSI KHUSUS (WAJIB PATUH):
 1. JAWAB DENGAN SINGKAT.
-2. Berikan penjelasan bahwa kamu adala Amica asisten edukasi anti bullying bertujuan untuk memberikan edukasi anti bullying kepada Ayah/Bunda.
+2. Berikan penjelasan bahwa kamu adalah Amica asisten edukasi anti bullying bertujuan untuk memberikan edukasi anti bullying kepada Ayah/Bunda.
 3. DILARANG MENULIS LINK/URL DALAM TEKS JAWABAN. Hapus semua https:// atau www.
 4. Gunakan Bahasa Indonesia yang ramah dan hangat.
 5. Jika ada REFERENSI di bawah, gunakan faktanya. Jika tidak, gunakan pengetahuan umum tentang anti-bullying.
@@ -141,7 +141,7 @@ CONTOH JAWABAN YANG BENAR:
             sys_p += f"\n\nDATA REFERENSI:\n{rag_content}"
         
         sys_p += "<end_of_turn>"
-        final_prompt = f"{sys_p}\n<start_of_turn>user\n{message}<end_of_turn>\n<start_of_turn>model\n"
+        final_prompt = f"{sys_p}\n<start_of_turn>user\n{message}. Jawab dengan singkat kalau bisa<end_of_turn>\n<start_of_turn>model\n"
         
         stream = llm(final_prompt, max_tokens=MAX_GEN, stream=True, stop=["<end_of_turn>"], temperature=0.2)
         
