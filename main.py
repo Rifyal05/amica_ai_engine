@@ -141,7 +141,7 @@ CONTOH JAWABAN YANG BENAR:
             sys_p += f"\n\nDATA REFERENSI:\n{rag_content}"
         
         sys_p += "<end_of_turn>"
-        final_prompt = f"{sys_p}\n<start_of_turn>user\n{message}. Jawab dengan singkat kalau bisa<end_of_turn>\n<start_of_turn>model\n"
+        final_prompt = f"{sys_p}\n<start_of_turn>user\n{message}. Jawab memberikan jawaban yang sangat panjang kalau gak diminta<end_of_turn>\n<start_of_turn>model\n"
         
         stream = llm(final_prompt, max_tokens=MAX_GEN, stream=True, stop=["<end_of_turn>"], temperature=0.2)
         
